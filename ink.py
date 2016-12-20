@@ -359,7 +359,9 @@ class TNodeBuilder(object):
                 if is_new_best_epoch:
                     # saver = tf.train.Saver(tf.all_trainable_variables())
                     saver = tf.train.Saver()
-                    saver.save(session, 'best-epoch.tf')
+                    saver.save(session, 'best-epoch.ckpt')
+                    saver.export_meta_graph('best-epoch.meta')
+
                     cPickle.dump(self.best_mapping, open('best-mapping.pkl', 'wb'))
 
                 if self.num_epochs % 20 == 0:
