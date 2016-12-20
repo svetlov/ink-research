@@ -7,6 +7,8 @@ from __future__ import print_function
 
 import math
 import argparse
+import random
+import cPickle
 
 from itertools import izip
 
@@ -94,9 +96,11 @@ def _balance_labels_and_shuffle(features, labels):
 
     new_features = np.empty(shape=features.shape, dtype=features.dtype)
     new_labels = np.empty(shape=[n_samples], dtype=labels.dtype)
+    label_indices_dict = {}
 
     for label_idx, label in enumerate(unique_labels):
         ordered_label_indices = indices[labels == label]
+        label_indices_dict[label] = ordered_label_indices
         label_indices = ordered_label_indices.copy()
 
         # use bootstrapping method to get more samples if required
@@ -109,6 +113,19 @@ def _balance_labels_and_shuffle(features, labels):
         from_, to_ = samples_per_label * label_idx, samples_per_label * (label_idx + 1)
         new_features[from_:to_] = features[label_indices]
         new_labels[from_:to_] = label
+
+    # добиваем хвост примеров случайными
+    unique_labels = list(unique_labels)
+    for idx in xrange(samples_per_label * n_unique_labels, n_samples):
+        label_idx = random.randint(0, len(unique_labels) - 1)
+        label = unique_labels[label_idx]
+        sample_idx = random.randint(0, label_indices_dict[label].shape[0] - 1)
+        new_features[idx] = features[label_indices_dict[label][sample_idx]]
+        new_labels[idx] = labels[label_indices_dict[label][sample_idx]]
+
+    if np.any(new_labels > 10):
+        print(new_labels)
+        raise RuntimeError
 
     np.random.shuffle(indices)
     new_features = new_features[indices]
@@ -171,7 +188,7 @@ class NeuralNetworkWithOneHiddenLayer(object):
                 self._b_2 = tf.Variable(tf.truncated_normal([num_labels]), name='b')
 
                 self.predicted_y = tf.nn.softmax(tf.matmul(h1, self._W_2) + self._b_2)
-                predicted_label = tf.argmax(self.predicted_y, 1)
+                predicted_label = tf.argmax(self.predicted_y, 1, name='predicted_label')
 
             self.cost = self._cost_builder(self.predicted_y, self.expected_y)
             self.optimizer = self._optimizer_builder()
@@ -237,6 +254,11 @@ class TNodeBuilder(object):
         self.model = model.finalize(self.num_features, self.num_labels)
         self.get_winner = get_winner
 
+        self.num_epochs = 0
+        self.best_epoch = 0
+        self.best_accuracy = None
+        self.best_mapping = self.mapping.copy()
+
     @property
     def mapping(self):
         return self._mapping
@@ -294,34 +316,22 @@ class TNodeBuilder(object):
 
         self.mapping = new_mapping
 
-    def print_train_and_validation_error(self, session, num_epochs):
-        trn_one_hot_labels = _to_one_hot(self._mapped_trn_labels, self.num_labels)
-        vld_one_hot_labels = _to_one_hot(self._mapped_vld_labels, self.num_labels)
-        trn_error = session.run(
-            self.model.accuracy,
-            {
-                self.model.x: self._original_trn_features,
-                self.model.expected_y: trn_one_hot_labels
-            }
-        )
-
-        vld_error = session.run(
-            self.model.accuracy,
-            {
-                self.model.x: self._original_vld_features,
-                self.model.expected_y: vld_one_hot_labels
-            }
-        )
-        print("epoch {}:\t\t{}\t\t{}".format(num_epochs, trn_error, vld_error))
+    def check_new_best_accuracy(self, vld_accuracy):
+        if self.best_accuracy is None or vld_accuracy > self.best_accuracy:
+            self.best_accuracy = vld_accuracy
+            self.best_epoch = self.num_epochs
+            self.best_mapping = self.mapping.copy()
+            return True
+        return False
 
     def build(self):
+        assert self.num_epochs == 0
         with self.model.graph.as_default():
             session = tf.Session()
             session.run(tf.initialize_all_variables())
 
-            num_epochs = 0
-            while True:
-                num_epochs += 1
+            while self.num_epochs - self.best_epoch < 60:
+                self.num_epochs += 1
                 trn_features, trn_labels = _balance_labels_and_shuffle(self._original_trn_features, self._mapped_trn_labels)
                 # trn_features, trn_labels = self._original_trn_features, self._mapped_trn_labels
                 trn_one_hot_labels = _to_one_hot(trn_labels, self.num_labels)
@@ -329,14 +339,49 @@ class TNodeBuilder(object):
                 batches = random_batches_data_provider(self.model.batch_size, trn_features, trn_one_hot_labels)
                 for x_data, y_data in batches:
                     session.run(self.model.train_step, {self.model.x: x_data, self.model.expected_y: y_data})
-
-                self.print_train_and_validation_error(session, num_epochs)
                 self.try_unite_outputs(session)
-                self.print_train_and_validation_error(session, num_epochs)
 
-                if num_epochs % 20 == 0:
+                trn_one_hot_labels = _to_one_hot(self._mapped_trn_labels, self.num_labels)
+                vld_one_hot_labels = _to_one_hot(self._mapped_vld_labels, self.num_labels)
+                trn_accuracy = session.run(self.model.accuracy, {
+                        self.model.x: self._original_trn_features,
+                        self.model.expected_y: trn_one_hot_labels
+                    })
+
+                vld_accuracy = session.run(self.model.accuracy, {
+                        self.model.x: self._original_vld_features,
+                        self.model.expected_y: vld_one_hot_labels
+                    })
+                is_new_best_epoch = self.check_new_best_accuracy(vld_accuracy)
+                print("{}Accuracy at epoch {}:\t\t{}\t\t{}".format(
+                    '* ' if is_new_best_epoch else '', self.num_epochs, trn_accuracy, vld_accuracy))
+
+                if is_new_best_epoch:
+                    # saver = tf.train.Saver(tf.all_trainable_variables())
+                    saver = tf.train.Saver()
+                    saver.save(session, 'best-epoch.tf')
+                    cPickle.dump(self.best_mapping, open('best-mapping.pkl', 'wb'))
+
+                if self.num_epochs % 20 == 0:
+                    print("Mapping at epoch {}".format(self.num_epochs))
                     for label, neuron in self.mapping.iteritems():
-                        print("\t{}\t{}".format(label, neuron))
+                        print("\t{} -> {}".format(label, neuron))
+
+            print("all work is done, best epoch is {}".format(self.best_epoch))
+            print("Mapping at best epoch:")
+            for label, neuron in self.best_mapping.iteritems():
+                print("\t{} -> {}".format(label, neuron))
+
+
+def apply_model(graph_path, variables_path, data_path, output_path):
+    data = np.loadtxt(data_path, delimiter=',')[:, :-1]
+    saver = tf.train.import_meta_graph(graph_path)
+    session = tf.Session()
+    saver.restore(session, variables_path)
+    result = session.run('output/predicted_label:0', feed_dict={'input/x:0': data})
+    with open(output_path, 'w') as wh:
+        for label in result:
+            print(label, file=wh)
 
 
 def read_train_validation(trn_path, vld_path):
@@ -357,30 +402,45 @@ def max_greater_than_threshold(outputs):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train-data", required=True)
-    parser.add_argument("--validation-data", required=True)
-    parser.add_argument("--num-hidden-neurons", default=3, type=int)
-    parser.add_argument("--batch-size", default=1, type=int)
-    parser.add_argument("--learning-rate", required=True, type=float)
-    parser.add_argument("--momentum", default=0.9, type=float)
+    subparsers = parser.add_subparsers(help='mode', dest='command')
+    train = subparsers.add_parser('train')
+    train.add_argument("--train-data", required=True)
+    train.add_argument("--validation-data", required=True)
+    train.add_argument("--num-hidden-neurons", default=3, type=int)
+    train.add_argument("--batch-size", default=1, type=int)
+    train.add_argument("--learning-rate", required=True, type=float)
+    train.add_argument("--momentum", default=0.9, type=float)
+    apply = subparsers.add_parser('apply')
+    apply.add_argument("--graph", required=True)
+    apply.add_argument("--variables", required=True)
+    apply.add_argument("--data", required=True)
+    apply.add_argument('--output', required=True)
+
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    trn_features, trn_labels, vld_features, vld_labels = read_train_validation(args.train_data, args.validation_data)
+    if args.command == 'train':
+        trn_features, trn_labels, vld_features, vld_labels = read_train_validation(args.train_data, args.validation_data)
 
-    model = NeuralNetworkWithOneHiddenLayer(
-        batch_size=args.batch_size, num_hidden=args.num_hidden_neurons,
-        optimizer_builder=lambda: tf.train.MomentumOptimizer(args.learning_rate, args.momentum, use_nesterov=False),
-        cost_builder=cross_entropy_builder
-    )
+        model = NeuralNetworkWithOneHiddenLayer(
+            batch_size=args.batch_size, num_hidden=args.num_hidden_neurons,
+            optimizer_builder=lambda: tf.train.MomentumOptimizer(args.learning_rate, args.momentum, use_nesterov=False),
+            cost_builder=cross_entropy_builder
+        )
 
-    node = TNodeBuilder(
-        model,
-        trn_features, trn_labels,
-        vld_features, vld_labels,
-        {i: i for i in xrange(10)},
-        max_greater_than_threshold
-    )
-    node.build()
+        n_unique_labels = set(trn_labels)
+
+        node = TNodeBuilder(
+            model,
+            trn_features, trn_labels,
+            vld_features, vld_labels,
+            {i: i for i in xrange(len(n_unique_labels))},
+            max_greater_than_threshold
+        )
+        node.build()
+    elif args.command == 'apply':
+        apply_model(args.graph, args.variables, args.data, args.output)
+    else:
+        raise RuntimeError("unsupported command")
