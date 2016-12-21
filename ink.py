@@ -123,10 +123,6 @@ def _balance_labels_and_shuffle(features, labels):
         new_features[idx] = features[label_indices_dict[label][sample_idx]]
         new_labels[idx] = labels[label_indices_dict[label][sample_idx]]
 
-    if np.any(new_labels > 10):
-        print(new_labels)
-        raise RuntimeError
-
     np.random.shuffle(indices)
     new_features = new_features[indices]
     new_labels = new_labels[indices]
@@ -324,14 +320,16 @@ class TNodeBuilder(object):
             return True
         return False
 
-    def build(self):
+    def build(self, unite_start, unite_timeout):
         assert self.num_epochs == 0
         with self.model.graph.as_default():
             session = tf.Session()
             session.run(tf.initialize_all_variables())
 
+            since_last_unite = 0
             while self.num_epochs - self.best_epoch < 60:
                 self.num_epochs += 1
+                since_last_unite += 1
                 trn_features, trn_labels = _balance_labels_and_shuffle(self._original_trn_features, self._mapped_trn_labels)
                 # trn_features, trn_labels = self._original_trn_features, self._mapped_trn_labels
                 trn_one_hot_labels = _to_one_hot(trn_labels, self.num_labels)
@@ -339,7 +337,8 @@ class TNodeBuilder(object):
                 batches = random_batches_data_provider(self.model.batch_size, trn_features, trn_one_hot_labels)
                 for x_data, y_data in batches:
                     session.run(self.model.train_step, {self.model.x: x_data, self.model.expected_y: y_data})
-                self.try_unite_outputs(session)
+                if self.num_epochs > unite_start and since_last_unite > unite_timeout:
+                    self.try_unite_outputs(session)
 
                 trn_one_hot_labels = _to_one_hot(self._mapped_trn_labels, self.num_labels)
                 vld_one_hot_labels = _to_one_hot(self._mapped_vld_labels, self.num_labels)
@@ -393,13 +392,13 @@ def read_train_validation(trn_path, vld_path):
     return all_trn[:, :-1], all_trn[:, -1].astype(int), all_vld[:, :-1], all_vld[:, -1].astype(int)
 
 
-def max_greater_than_threshold(outputs):
-    threshold = 0.2
-
-    positions = outputs.argmax(axis=1)
-    values = outputs[np.arange(outputs.shape[0]), positions]
-    positions[np.where(values < threshold)] = NO_WINNER_LABEL
-    return positions
+def max_greater_than_threshold(threshold):
+    def max_greater_than_threshold_impl(outputs):
+        positions = outputs.argmax(axis=1)
+        values = outputs[np.arange(outputs.shape[0]), positions]
+        positions[np.where(values < threshold)] = NO_WINNER_LABEL
+        return positions
+    return max_greater_than_threshold_impl
 
 
 def parse_args():
@@ -412,6 +411,9 @@ def parse_args():
     train.add_argument("--batch-size", default=1, type=int)
     train.add_argument("--learning-rate", required=True, type=float)
     train.add_argument("--momentum", default=0.9, type=float)
+    train.add_argument("--unite-threshold", default=0.2, type=float)
+    train.add_argument("--unite-start", type=int, required=True)
+    train.add_argument("--unite-timeout", type=int, required=True)
     apply = subparsers.add_parser('apply')
     apply.add_argument("--graph", required=True)
     apply.add_argument("--variables", required=True)
@@ -439,9 +441,9 @@ if __name__ == "__main__":
             trn_features, trn_labels,
             vld_features, vld_labels,
             {i: i for i in xrange(len(n_unique_labels))},
-            max_greater_than_threshold
+            max_greater_than_threshold(args.unite_threshold)
         )
-        node.build()
+        node.build(args.unite_start, args.unite_timeout)
     elif args.command == 'apply':
         apply_model(args.graph, args.variables, args.data, args.output)
     else:
