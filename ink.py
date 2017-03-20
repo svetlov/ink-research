@@ -257,7 +257,7 @@ class TNodeBuilder(object):
         self.best_accuracy = None
         self.best_mapping = self.mapping.copy()
 
-        self.features_and_hidden = self._original_trn_features.copy()
+        self.features_and_hidden_outputs = self._original_trn_features.copy()
 
     @property
     def mapping(self):
@@ -346,13 +346,13 @@ class TNodeBuilder(object):
 
                 trn_one_hot_labels = _to_one_hot(self._mapped_trn_labels, self.num_labels)
                 vld_one_hot_labels = _to_one_hot(self._mapped_vld_labels, self.num_labels)
-                trn_accuracy, h1 = session.run([self.model.accuracy, self.model.h1], {
+                trn_accuracy, h1, outputs = session.run([self.model.accuracy, self.model.h1, self.model.predicted_y], {
                         self.model.x: self._original_trn_features,
                         self.model.expected_y: trn_one_hot_labels
                     })
-                self.features_and_hidden = np.hstack([self.features_and_hidden, h1])
+                self.features_and_hidden_outputs = np.hstack([self.features_and_hidden_outputs, h1, outputs])
                 with open('./log_trn_hidden', 'w') as wh:
-                    for line in self.features_and_hidden:
+                    for line in self.features_and_hidden_outputs:
                         wh.write("\t".join([str(value) for value in line]))
                         wh.write("\n")
 
