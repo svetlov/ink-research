@@ -177,13 +177,13 @@ class NeuralNetworkWithOneHiddenLayer(object):
                 self._W_1 = tf.Variable(tf.truncated_normal([num_features, self.num_hidden]), name='W')
                 self._b_1 = tf.Variable(tf.truncated_normal([self.num_hidden]), name='b')
 
-                h1 = tf.nn.relu(tf.matmul(self.x, self._W_1) + self._b_1)
+                self.h1 = tf.nn.relu(tf.matmul(self.x, self._W_1) + self._b_1)
 
             with tf.name_scope('output'):
                 self._W_2 = tf.Variable(tf.truncated_normal([self.num_hidden, num_labels]), name='W')
                 self._b_2 = tf.Variable(tf.truncated_normal([num_labels]), name='b')
 
-                self.predicted_y = tf.nn.softmax(tf.matmul(h1, self._W_2) + self._b_2)
+                self.predicted_y = tf.nn.softmax(tf.matmul(self.h1, self._W_2) + self._b_2)
                 predicted_label = tf.argmax(self.predicted_y, 1, name='predicted_label')
 
             self.cost = self._cost_builder(self.predicted_y, self.expected_y)
@@ -244,6 +244,8 @@ class TNodeBuilder(object):
         self._mapping = None
         self.mapping = mapping.copy()  # it's trigger generation of self._mapped_(trn|vld)_labels data members
 
+        self.num_trn_samples = trn_features.shape[0]
+        self.num_vld_samples = vld_features.shape[0]
         self.num_features = trn_features.shape[1]
         self.num_labels = len({output_neuron_idx for output_neuron_idx in self.mapping.values()})
 
@@ -254,6 +256,8 @@ class TNodeBuilder(object):
         self.best_epoch = 0
         self.best_accuracy = None
         self.best_mapping = self.mapping.copy()
+
+        self.features_and_hidden = self._original_trn_features.copy()
 
     @property
     def mapping(self):
@@ -342,10 +346,15 @@ class TNodeBuilder(object):
 
                 trn_one_hot_labels = _to_one_hot(self._mapped_trn_labels, self.num_labels)
                 vld_one_hot_labels = _to_one_hot(self._mapped_vld_labels, self.num_labels)
-                trn_accuracy = session.run(self.model.accuracy, {
+                trn_accuracy, h1 = session.run([self.model.accuracy, self.model.h1], {
                         self.model.x: self._original_trn_features,
                         self.model.expected_y: trn_one_hot_labels
                     })
+                self.features_and_hidden = np.hstack([self.features_and_hidden, h1])
+                with open('./log_trn_hidden', 'w') as wh:
+                    for line in self.features_and_hidden:
+                        wh.write("\t".join([str(value) for value in line]))
+                        wh.write("\n")
 
                 vld_accuracy = session.run(self.model.accuracy, {
                         self.model.x: self._original_vld_features,
