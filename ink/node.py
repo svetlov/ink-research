@@ -224,7 +224,7 @@ def train(
             if trn_node_data.try_unite_outputs(outputs, part_split_threshold):
                 print("New mapping:")
                 for label, active_outputs in trn_node_data.label_to_active_outputs.items():
-                    print("{} -> {}".format(label, ",".join(map(str, sorted(active_outputs)))))
+                    print("\t{} -> {}".format(label, ",".join(map(str, sorted(active_outputs)))))
 
         trn_labels = trn_node_data._mapped_trn_labels
         h1, trn_outputs = session.run([model.h1, model.predicted_y], {

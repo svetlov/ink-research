@@ -34,15 +34,16 @@ def parse_args():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help='mode', dest='command')
     train = subparsers.add_parser('train')
-    train.add_argument("--train-data", required=True)
-    train.add_argument("--validation-data", required=True)
+    train.add_argument("--train-data", help="tsv file containing train features and labels", required=True)
+    train.add_argument("--validation-data", help="tsv file containing validation features and labels", required=True)
     train.add_argument("--num-hidden-neurons", default=3, type=int)
     train.add_argument("--batch-size", default=1, type=int)
     train.add_argument("--learning-rate", required=True, type=float)
     train.add_argument("--momentum", default=0.9, type=float)
-    train.add_argument("--unite-threshold", default=0.2, type=float)
-    train.add_argument("--unite-start", type=int, required=True)
-    train.add_argument("--unite-timeout", type=int, required=True)
+    train.add_argument("--unite-threshold", help="minimal actiavtion value for sample to vote", default=0.2, type=float)
+    train.add_argument("--unite-start", help="epoch number at which uniting procedure will be performed first time", type=int, required=True)
+    train.add_argument("--unite-timeout", help="number of epochs between uniting procudures", type=int, required=True)
+    train.add_argument("--part-split-threshold", help="minimal (num samples in group)/(num samples in class) ratio", type=float, default=0.2)
     apply = subparsers.add_parser('apply')
     apply.add_argument("--graph", required=True)
     apply.add_argument("--variables", required=True)
@@ -63,7 +64,7 @@ def main():
             trn_node_data = UniteNodeData(
                 trn_features,
                 trn_labels,
-                max_greater_than_threshold(0.2))
+                max_greater_than_threshold(args.unite_threshold))
 
             model = NeuralNetworkWithOneHiddenLayer(
                 trn_node_data.num_features,
@@ -86,6 +87,7 @@ def main():
                     trn_node_data,
                     vld_features,
                     vld_labels,
+                    part_split_threshold=args.part_split_threshold,
                     unite_start=args.unite_start,
                     unite_timeout=args.unite_timeout,
                     batch_size=args.batch_size)
