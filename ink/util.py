@@ -6,29 +6,38 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 
 
-def _check_correct_and_get_num_labels(labels):
+def get_num_labels(labels):
     """Check that labels forms continious sequence from 0 to max label idx.
 
     :param labels: numpy array of shape [nrows]
     :return: Number of unique labels
     """
     assert len(labels.shape) == 1
-
-    uniq_labels = set(labels)
-    print(sorted(uniq_labels), range(len(uniq_labels)))
-    assert sorted(uniq_labels) == range(len(uniq_labels))
-
-    return len(uniq_labels)
+    return len(set(labels))
 
 
 def to_one_hot(labels, n_columns=None):
     """Create one hot representation of labels"""
-    n_columns = _check_correct_and_get_num_labels(labels) if n_columns is None else n_columns
+    n_columns = get_num_labels(labels) if n_columns is None else n_columns
     n_rows = labels.shape[0]
 
     binary = np.zeros([n_rows, n_columns], dtype='float')
     binary[np.arange(n_rows), labels] = 1.0
     return binary
+
+
+def remap_labels(labels):
+    assert len(labels.shape) == 1
+    unique_labels = sorted(set(labels))
+
+    mapping = {}
+    for idx, label in enumerate(unique_labels):
+        mapping[label] = idx
+
+    remapped = np.zeros_like(labels)
+    for sample_idx, label in enumerate(labels):
+        remapped[sample_idx] = mapping[label]
+    return mapping, remapped
 
 
 def _filter_features_and_labels_by_keys(features, labels, good_labels):

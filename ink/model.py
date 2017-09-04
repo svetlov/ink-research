@@ -14,6 +14,7 @@ def cross_entropy_builder(predicted_y, expected_y):
         )
     )
 
+
 class NeuralNetworkWithOneHiddenLayer(object):
     def __init__(self, num_features, num_hidden, num_labels, optimizer, cost_builder):
         self.num_features = num_features
@@ -36,7 +37,7 @@ class NeuralNetworkWithOneHiddenLayer(object):
             self._W_2 = tf.Variable(tf.truncated_normal([self.num_hidden, num_labels]), name='W')
             self._b_2 = tf.Variable(tf.truncated_normal([num_labels]), name='b')
 
-            self.predicted_y = tf.nn.softmax(tf.matmul(self.h1, self._W_2) + self._b_2)
+            self.predicted_y = tf.nn.softmax(tf.matmul(self.h1, self._W_2) + self._b_2, name="y")
             predicted_label = tf.argmax(self.predicted_y, 1, name='predicted_label')
 
         self.cost = cost_builder(self.predicted_y, self.expected_y)
