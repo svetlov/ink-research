@@ -30,7 +30,7 @@ def max_greater_than_threshold(threshold):
 
 
 class UniteNodeData(object):
-    def __init__(self, features, labels, dataset_label_to_num_samples, get_winner):
+    def __init__(self, features, labels, dataset_label_to_num_samples):
         """Create node builder.
 
         Model will be used for trainining of trn_features/trn_labels, and training will continue until given
@@ -57,6 +57,7 @@ class UniteNodeData(object):
         self.num_labels = get_num_labels(self._node_labels)
 
         # we need to pass it from constructor and convert to node_label_num_samples
+        self._dataset_label_to_num_samples = dataset_label_to_num_samples
         self.node_label_num_samples = np.zeros([self.num_labels], dtype=int)
         for dataset_label_idx, num_samples_for_label in dataset_label_to_num_samples.items():
             if dataset_label_idx in self.dataset_label_to_node_label:
@@ -68,10 +69,7 @@ class UniteNodeData(object):
             for label_idx in xrange(self.num_labels)
         }
 
-        self.get_winner = get_winner
-
-    def try_unite_outputs(self, outputs, part_split_threshold):
-        winners = self.get_winner(outputs)
+    def try_unite_outputs(self, outputs, winners, part_split_threshold):
         assert winners.shape == self._node_labels.shape
 
         votes = np.zeros([self.num_labels, self.num_labels], dtype=np.float32)
@@ -138,6 +136,7 @@ def train_one_node_impl(
     trn_node_data,
     vld_features,
     vld_labels,
+    get_winner,
     unite_start=0,
     unite_timeout=1,
     part_split_threshold=0.2,
@@ -169,7 +168,7 @@ def train_one_node_impl(
             session.run(model.train_step, {model.x: x_data, model.expected_y: y_data})
         if num_epochs > unite_start and since_last_unite > unite_timeout:
             outputs = session.run(model.predicted_y, feed_dict={model.x: trn_node_data.features})
-            if trn_node_data.try_unite_outputs(outputs, part_split_threshold):
+            if trn_node_data.try_unite_outputs(outputs, get_winner(outputs), part_split_threshold):
                 print("New mapping:")
                 for label, active_outputs in trn_node_data.node_label_to_active_outputs.items():
                     print("\t{} -> {}".format(label, ",".join(map(str, sorted(active_outputs)))))
@@ -177,7 +176,7 @@ def train_one_node_impl(
         h1, trn_outputs = session.run([model.h1, model.predicted_y], {model.x: trn_node_data.features})
         trn_accuracy = calculate_accuracy(
             trn_outputs,
-            trn_node_data.mapped_node_labels,
+            trn_node_data._node_labels,
             trn_node_data.node_label_to_active_outputs)
 
         vld_outputs = session.run(model.predicted_y, {model.x: vld_features})

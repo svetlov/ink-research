@@ -26,13 +26,14 @@ def to_one_hot(labels, n_columns=None):
     return binary
 
 
-def remap_labels(labels):
+def remap_labels(labels, mapping=None):
     assert len(labels.shape) == 1
     unique_labels = sorted(set(labels))
 
-    mapping = {}
-    for idx, label in enumerate(unique_labels):
-        mapping[label] = idx
+    if mapping is None:
+        mapping = {}
+        for idx, label in enumerate(unique_labels):
+            mapping[label] = idx
 
     remapped = np.zeros_like(labels)
     for sample_idx, label in enumerate(labels):
