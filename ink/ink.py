@@ -93,33 +93,32 @@ def parse_args():
     return parser.parse_args()
 
 
-class NodeInfo(object):
-    def __init__(self, ancestor, node_data):
-        self.ancestor = ancestor
-        self.node_data = node_data
-
-        self.node_labels_to_outputs = defaultdict(list)
-        self.node_labels_to_original_trn_labels = {}
-
-
 def split_node_data(node_data):
-    output_to_labels = defaultdict(list)
-    for label_idx, outputs in node_data.label_to_active_outputs.items():
+    output_to_node_labels = defaultdict(list)
+    for node_label_idx, outputs in node_data.node_label_to_active_outputs.items():
         for output_idx in outputs:
-            output_to_labels[output_idx].append(label_idx)
+            output_to_node_labels[output_idx].append(node_label_idx)
+
+    node_labels_to_dataset_label = {}
+    for dataset_label_idx, node_label_idx in node_data.dataset_label_to_node_label.items():
+        node_labels_to_dataset_label[node_label_idx] = dataset_label_idx
+    dataset_label_to_num_samples = {}
+    for node_label_idx in xrange(node_data.num_labels):
+        dataset_label_to_num_samples[node_label_idx] = node_data.node_label_num_samples[node_label_idx]
 
     new_nodes = {}
-    for output_idx, labels_in_output in output_to_labels.items():
-        if len(labels_in_output) <= 1:
+    for output_idx, node_labels_in_output in output_to_node_labels.items():
+        if len(node_labels_in_output) <= 1:
             continue
         # here we want to create new node data based on labels in output
-        sample_indices = np.where(node_data._mapped_trn_labels == output_idx)[0]
-        features = node_data._original_trn_features[sample_indices]
-        labels = node_data._original_trn_labels[sample_indices]
+        sample_indices = np.where(node_data.mapped_trn_labels == output_idx)[0]
+        features = node_data.features[sample_indices]
+        labels = node_data.dataset_labels[sample_indices]
 
         new_node_data = UniteNodeData(
             features,
             labels,
+            dataset_label_to_num_samples,
             node_data.get_winner)
         new_nodes[output_idx] = new_node_data
     return new_nodes
@@ -172,9 +171,15 @@ def train_tree(args):
             cost_builder=cross_entropy_builder)
         return model
 
+    dataset_label_to_num_samples = {}
+    for label_idx in xrange(get_num_labels(trn_labels)):
+        dataset_label_to_num_samples[label_idx] = np.where(trn_labels == label_idx)[0].size
+    print(dataset_label_to_num_samples)
+
     trn_node_data = UniteNodeData(
         trn_features,
         trn_labels,
+        dataset_label_to_num_samples,
         max_greater_than_threshold(args.unite_threshold))
 
     train_one_node(
@@ -206,7 +211,7 @@ def main():
     elif args.command == "calculate-accuracy":
         features, labels = read_data(args.data)
         info = json.load(open(args.load_from_directory + "node_info.json"))
-        label_to_active_outputs = info["label_to_active_output_neurons"]
+        label_to_active_outputs = info["node_label_to_active_output_neurons"]
         label_to_active_outputs = {int(k): v for k, v in label_to_active_outputs.items()}
         with tf.Graph().as_default():
             session = tf.Session()
