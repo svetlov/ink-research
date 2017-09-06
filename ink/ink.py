@@ -152,7 +152,7 @@ def train_one_node(model_builder, trn_node_data, vld_features, vld_labels, save_
         session.close()
 
     new_nodes = split_node_data(trn_node_data)
-    new_node_pathes = {output_idx: args.save_to_directory + str(output_idx) for output_idx in new_nodes.keys()}
+    new_node_pathes = {output_idx: (save_path + str(output_idx) + "/") for output_idx in new_nodes.keys()}
     info["output_neuron_to_model_path"] = new_node_pathes
     json.dump(
         info,
@@ -240,14 +240,14 @@ def main():
     elif args.command == "calculate-accuracy":
         features, labels = read_data(args.data)
         info = json.load(open(args.load_from_directory + "node_info.json"))
-        label_to_active_outputs = info["node_label_to_active_output_neurons"]
-        label_to_active_outputs = {int(k): v for k, v in label_to_active_outputs.items()}
+        node_label_to_active_outputs = info["node_label_to_active_output_neurons"]
+        node_label_to_active_outputs = {int(k): v for k, v in node_label_to_active_outputs.items()}
         with tf.Graph().as_default():
             session = tf.Session()
             saver = tf.train.import_meta_graph(args.load_from_directory + "/model.meta")
             saver.restore(session, tf.train.latest_checkpoint(args.load_from_directory))
             result = session.run("output/y:0", feed_dict={"input/x:0": features})
-            accuracy = calculate_accuracy(result, labels, label_to_active_outputs)
+            accuracy = calculate_accuracy(result, labels, node_label_to_active_outputs)
             print("\n\nAccuracy is: {}%\n\n".format(accuracy))
     else:
         raise RuntimeError("unsupported command")
