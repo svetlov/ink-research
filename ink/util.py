@@ -41,6 +41,10 @@ def remap_labels(labels, mapping=None):
     return mapping, remapped
 
 
+def as_int_keys(ddict):
+    return {int(k): v for k, v in ddict.iteritems()}
+
+
 def _filter_features_and_labels_by_keys(features, labels, good_labels):
     """Filter labels and corresponding features by array of good labels.
 
