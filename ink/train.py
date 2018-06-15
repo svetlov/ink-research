@@ -5,6 +5,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 import numpy as np
 import tensorflow as tf
 
@@ -40,7 +42,16 @@ def split_node_data(node_data):
     return new_nodes
 
 
-def train_one_node(recursive, model_builder, trn_node_data, vld_features, vld_labels, save_path, get_winner, args):
+def train_one_node(
+        recursive,
+        model_builder,
+        trn_node_data,
+        vld_features,
+        vld_labels,
+        save_path,
+        get_winner,
+        args
+):
     print("\n===== Training new node with classes {} ===== \n".format(
         trn_node_data.dataset_label_to_node_label.keys()))
     print("\nDataset label to node label:")
@@ -51,29 +62,61 @@ def train_one_node(recursive, model_builder, trn_node_data, vld_features, vld_la
     print("\n")
 
     mapping, remapped_vld_labels = remap_labels(vld_labels, trn_node_data.dataset_label_to_node_label)
-    graph = tf.Graph()
-    with graph.as_default():
+    with tf.Graph().as_default():
         model = model_builder(trn_node_data.num_labels)
-        session = tf.Session()
-        session.run(tf.global_variables_initializer())
+        with tf.Session() as session:
+            session.run(tf.global_variables_initializer())
 
-        info = train_one_node_impl(
-            session=session,
-            save_path=save_path,
-            model=model,
-            trn_node_data=trn_node_data,
-            vld_features=vld_features,
-            vld_labels=remapped_vld_labels,
-            get_winner=get_winner,
-            unite_start=args.unite_start,
-            unite_timeout=args.unite_timeout,
-            part_split_threshold=args.part_split_threshold,
-            batch_size=args.batch_size,
-            wait_best_error_time=args.wait_best_error_time)
+            info = train_one_node_impl(
+                session=session,
+                save_path=save_path,
+                model=model,
+                trn_node_data=trn_node_data,
+                vld_features=vld_features,
+                vld_labels=remapped_vld_labels,
+                get_winner=get_winner,
+                unite_start=args.unite_start,
+                unite_timeout=args.unite_timeout,
+                part_split_threshold=args.part_split_threshold,
+                batch_size=args.batch_size,
+                wait_best_error_time=args.wait_best_error_time)
 
-        vld_outputs = session.run(model.predicted_y, {model.x: vld_features})
-        vld_output_winners = get_winner(vld_outputs)
-        session.close()
+            trn_outputs = session.run(model.predicted_y, {model.x: trn_node_data.features})
+            trn_output_winners = get_winner(trn_outputs)
+            vld_outputs = session.run(model.predicted_y, {model.x: vld_features})
+            vld_output_winners = get_winner(vld_outputs)
+            session.close()
+
+    if args.retrain_num_units is not None:
+        print("\nRetraining node with {} hidden units\n".format(args.retrain_num_units))
+        with tf.Graph().as_default():
+            retrain_model = model_builder(trn_node_data.num_labels, num_units = args.retrain_num_units)
+            with tf.Session() as session:
+                session.run(tf.global_variables_initializer())
+
+                info = train_one_node_impl(
+                    session=session,
+                    save_path=save_path,
+                    model=retrain_model,
+                    trn_node_data=trn_node_data,
+                    vld_features=vld_features,
+                    vld_labels=remapped_vld_labels,
+                    get_winner=get_winner,
+                    unite_start=sys.maxint,
+                    unite_timeout=sys.maxint,
+                    part_split_threshold=1.0,
+                    batch_size=args.batch_size,
+                    wait_best_error_time=args.wait_best_error_time)
+
+                trn_outputs = session.run(retrain_model.predicted_y, {retrain_model.x: trn_node_data.features})
+                trn_output_winners = get_winner(trn_outputs)
+                vld_outputs = session.run(retrain_model.predicted_y, {retrain_model.x: vld_features})
+                vld_output_winners = get_winner(vld_outputs)
+                session.close()
+
+    print("Final mapping:")
+    for label, active_outputs in trn_node_data.node_label_to_active_outputs.items():
+        print("\t{} -> {}".format(label, ",".join(map(str, sorted(active_outputs)))))
 
     new_nodes = split_node_data(trn_node_data)
     new_node_pathes = {output_idx: (save_path + str(output_idx) + "/") for output_idx in new_nodes.keys()}
@@ -116,10 +159,10 @@ def train_tree(args, recursive):
     trn_features, trn_labels = read_data(args.train_data)
     vld_features, vld_labels = read_data(args.validation_data)
 
-    def model_builder(num_labels):
+    def model_builder(num_labels, num_units=args.num_hidden_neurons):
         model = NeuralNetworkWithOneHiddenLayer(
             trn_features.shape[1],
-            args.num_hidden_neurons,
+            num_units,
             num_labels,
             optimizer=tf.train.MomentumOptimizer(
                 args.learning_rate,

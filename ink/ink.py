@@ -73,6 +73,11 @@ def parse_args():
         type=int,
         required=True,
         help="number of epochs without new local minimum to stop training")
+    train.add_argument(
+        "--retrain-num-units",
+        type=int,
+        default=None,
+        help='number of units used to retrain node')
 
     predict = subparsers.add_parser('predict')
     predict.add_argument("--load-from-directory", type=get_model_directory, required=True)

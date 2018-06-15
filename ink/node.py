@@ -3,12 +3,18 @@
 from __future__ import absolute_import, division, print_function
 
 import sys
+import os
 
 from copy import deepcopy
 from itertools import izip
 
+import matplotlib
+matplotlib.use('Agg')
+
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
+from matplotlib import cm
 
 from .data import random_batches_data_provider
 from .util import (
@@ -16,6 +22,7 @@ from .util import (
     remap_labels,
     to_one_hot
 )
+
 
 NO_WINNER_LABEL = -1
 
@@ -129,6 +136,32 @@ def calculate_accuracy(outputs, expected_labels, label_to_active_outputs):
     return 1.0 * correctly_classified_samples / outputs.shape[0]
 
 
+def create_predictor(session, predict_op, features_op, get_winner):
+    def predictor(features):
+        predicted = session.run(predict_op, feed_dict={features_op: features})
+        return get_winner(predicted)
+    return predictor
+
+
+def visualize(predictor, X, y, title, path):
+    assert X.shape[1] == 2
+    x0_min, x0_max = X[:, 0].min() - 1, X[:, 0].max() + 1
+    x1_min, x1_max = X[:, 1].min() - 1, X[:, 1].max() + 1
+
+    x0_grid, x1_grid = np.meshgrid(
+        np.arange(x0_min, x0_max, 0.1),
+        np.arange(x1_min, x1_max, 0.1)
+    )
+    grid = np.stack([x0_grid.ravel(), x1_grid.ravel()]).T.reshape([-1, 2])
+    predicted = predictor(grid).reshape(x0_grid.shape)
+
+    f, axarr = plt.subplots(1, 1, sharex='col', sharey='row', figsize=(10, 8))
+    axarr.contourf(x0_grid, x1_grid, predicted, alpha=0.2, cmap=cm.jet)
+    axarr.scatter(X[:, 0], X[:, 1], c=y, s=10, edgecolor=None)
+    axarr.set_title(title)
+    f.savefig(os.path.join(path, "{}.png".format(title)), dpi=300)
+
+
 def train_one_node_impl(
     session,
     save_path,
@@ -199,6 +232,11 @@ def train_one_node_impl(
                 vld_accuracy))
     trn_node_data.mapped_trn_labels = best_mapped_labels
     trn_node_data.node_label_to_active_outputs = best_node_label_to_active_outputs
+
+    if trn_node_data.features.shape[1] == 2:
+        predictor = create_predictor(session, model.predicted_y, model.x, get_winner)
+        visualize(predictor, trn_node_data.features, trn_node_data.mapped_node_labels, title='mapped', path=save_path)
+        visualize(predictor, trn_node_data.features, trn_node_data._node_labels, title='original', path=save_path)
 
     return {
         "best_epoch": best_epoch,
