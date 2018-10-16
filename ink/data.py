@@ -13,7 +13,7 @@ def read_data(path):
 
 def simple_data_provider(batch_size, features, labels):
     num_batches = int(math.floor(features.shape[0] / batch_size))
-    for batch_idx in xrange(num_batches):
+    for batch_idx in range(num_batches):
         low = batch_idx * batch_size
         high = low + batch_size
         yield [features[low:high], labels[low:high]]
@@ -23,7 +23,7 @@ def random_batches_data_provider(batch_size, features, labels):
     num_batches = int(math.floor(features.shape[0] / batch_size))
     indices = np.arange(num_batches * batch_size)
     np.random.shuffle(indices)
-    for batch_idx in xrange(num_batches):
+    for batch_idx in range(num_batches):
         low = batch_idx * batch_size
         high = low + batch_size
         batch_indices = indices[low:high]

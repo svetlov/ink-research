@@ -118,8 +118,8 @@ def train_one_node(
                     vld_features=vld_features,
                     vld_labels=remapped_vld_labels,
                     get_winner=unite_parameters.get_winner,
-                    unite_start=sys.maxint,
-                    unite_timeout=sys.maxint,
+                    unite_start=sys.maxsize,
+                    unite_timeout=sys.maxsize,
                     part_split_threshold=1.0,
                 )
 
@@ -148,7 +148,7 @@ def train_one_node(
         for output_idx, new_node_data in new_nodes.items():
             dataset_labels = new_node_data.dataset_label_to_node_label.keys()
             samples_to_keep = []
-            for iSample in xrange(vld_labels.shape[0]):
+            for iSample in range(vld_labels.shape[0]):
                 if (vld_labels[iSample] in dataset_labels
                         and (
                             vld_output_winners[iSample] == output_idx
@@ -189,7 +189,7 @@ def train_tree(
     vld_features, vld_labels = validation_data
 
     dataset_label_to_num_samples = {}
-    for label_idx in xrange(get_num_labels(trn_labels)):
+    for label_idx in range(get_num_labels(trn_labels)):
         dataset_label_to_num_samples[label_idx] = np.where(trn_labels == label_idx)[0].size
 
     trn_node_data = UniteNodeData(

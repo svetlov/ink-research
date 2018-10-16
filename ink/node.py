@@ -6,7 +6,8 @@ import sys
 import os
 
 from copy import deepcopy
-from itertools import izip
+# from itertools import izip
+# from itertools import izip
 
 import matplotlib
 matplotlib.use('Agg')
@@ -73,25 +74,25 @@ class UniteNodeData(object):
 
         self.node_label_to_active_outputs = {
             label_idx: [label_idx]
-            for label_idx in xrange(self.num_labels)
+            for label_idx in range(self.num_labels)
         }
 
     def try_unite_outputs(self, outputs, winners, part_split_threshold):
         assert winners.shape == self._node_labels.shape
 
         votes = np.zeros([self.num_labels, self.num_labels], dtype=np.float32)
-        for node_label_idx, winner_label_idx in izip(self._node_labels, winners):
+        for node_label_idx, winner_label_idx in zip(self._node_labels, winners):
             if winner_label_idx == NO_WINNER_LABEL:
                 continue
             votes[node_label_idx][winner_label_idx] += 1
         votes /= self.node_label_num_samples
 
         new_node_label_to_active_outputs = {}
-        for node_label_idx in xrange(self.num_labels):
+        for node_label_idx in range(self.num_labels):
             active_outputs = []
 
             node_label_votes = votes[node_label_idx]
-            for winner_label_idx in xrange(self.num_labels):
+            for winner_label_idx in range(self.num_labels):
                 if node_label_votes[winner_label_idx] >= part_split_threshold:
                     active_outputs.append(winner_label_idx)
             if len(active_outputs) == 0:
@@ -111,7 +112,7 @@ class UniteNodeData(object):
         self.node_label_to_active_outputs = new_node_label_to_active_outputs
 
         # remap data labels according to new_label_to_active_outputs
-        tuples = izip(xrange(self.num_samples), self._node_labels, winners, outputs)
+        tuples = zip(range(self.num_samples), self._node_labels, winners, outputs)
         for sample_idx, node_label_idx, winner_idx, sample_output in tuples:
             if winner_idx in self.node_label_to_active_outputs[node_label_idx]:
                 self.mapped_node_labels[sample_idx] = winner_idx
@@ -129,7 +130,7 @@ class UniteNodeData(object):
 def calculate_accuracy(outputs, expected_labels, label_to_active_outputs):
     correctly_classified_samples = 0
     winners = np.argmax(outputs, axis=1)
-    for winner, expected_label in izip(winners, expected_labels):
+    for winner, expected_label in zip(winners, expected_labels):
         accepted_labels = label_to_active_outputs[expected_label]
         if winner in accepted_labels:
             correctly_classified_samples += 1
@@ -156,7 +157,7 @@ def visualize(predictor, X, y, title, path):
     predicted = predictor(grid).reshape(x0_grid.shape)
 
     f, axarr = plt.subplots(1, 1, sharex='col', sharey='row', figsize=(10, 8))
-    axarr.contourf(x0_grid, x1_grid, predicted, alpha=0.2, cmap=cm.jet)
+    axarr.contourf(x0_grid, x1_grid, predicted, alpha=0.2, cmap=cm.tab20)
     axarr.scatter(X[:, 0], X[:, 1], c=y, s=10, edgecolor=None)
     axarr.set_title(title)
     f.savefig(os.path.join(path, "{}.png".format(title)), dpi=300)
