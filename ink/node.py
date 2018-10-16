@@ -156,7 +156,7 @@ def visualize(predictor, X, y, title, path):
     predicted = predictor(grid).reshape(x0_grid.shape)
 
     f, axarr = plt.subplots(1, 1, sharex='col', sharey='row', figsize=(10, 8))
-    axarr.contourf(x0_grid, x1_grid, predicted, alpha=0.2, cmap=cm.jet)
+    axarr.contourf(x0_grid, x1_grid, predicted, alpha=0.2, cmap=cm.tab20)
     axarr.scatter(X[:, 0], X[:, 1], c=y, s=10, edgecolor=None)
     axarr.set_title(title)
     f.savefig(os.path.join(path, "{}.png".format(title)), dpi=300)
