@@ -96,10 +96,42 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = ''
 
     args = parse_args()
-    if args.command == 'train':
-        train_tree(args, recursive=True)
-    elif args.command == "train-root-node":
-        train_tree(args, recursive=False)
+    if args.command == 'train' or args.command == 'train-root-node':
+        recursive = (args.command == 'train')
+
+        trn_features, trn_labels = read_data(args.train_data)
+        vld_features, vld_labels = read_data(args.validation_data)
+
+        def model_builder(num_labels, num_units=args.num_hidden_neurons):
+            model = NeuralNetworkWithOneHiddenLayer(
+                trn_features.shape[1],
+                num_units,
+                num_labels,
+                optimizer=tf.train.MomentumOptimizer(
+                    args.learning_rate,
+                    args.momentum,
+                    use_nesterov=False),
+                cost_builder=cross_entropy_builder)
+            return model
+
+        unite_parameters = UniteParameters(
+            get_winner=max_greater_than_threshold(args.unite_threshold),
+            unite_start=args.unite_start,
+            unite_timeout=args.unite_timeout,
+            part_split_threshold=args.part_split_threshold,
+        )
+
+        train_tree(
+            recursive=recursive,
+            train_data=(trn_features, trn_labels),
+            validation_data=(vld_features, vld_labels),
+            save_path=args.save_to_directory,
+            batch_size=args.batch_size,
+            model_builder=model_builder,
+            wait_best_error_time=args.wait_best_error_time,
+            retrain_num_units=args.retrain_num_units,
+            unite_parameters=unite_parameters,
+        )
     elif args.command == 'predict':
         data = np.loadtxt(args.data, delimiter=",")
         if args.ignore_last_column_in_data:

@@ -11,12 +11,23 @@ import numpy as np
 import tensorflow as tf
 
 import json
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 
 from .data import *
 from .model import *
 from .node import max_greater_than_threshold, UniteNodeData, train_one_node_impl
 from .util import get_num_labels, remap_labels
+
+
+UniteParameters = namedtuple(
+    "UniteParameters",
+    [
+        "get_winner",
+        "unite_start",
+        "unite_timeout",
+        "part_split_threshold",
+    ]
+)
 
 
 def split_node_data(node_data):
@@ -44,13 +55,15 @@ def split_node_data(node_data):
 
 def train_one_node(
         recursive,
+        batch_size,
         model_builder,
+        retrain_num_units,
+        wait_best_error_time,
         trn_node_data,
         vld_features,
         vld_labels,
         save_path,
-        get_winner,
-        args
+        unite_parameters,
 ):
     print("\n===== Training new node with classes {} ===== \n".format(
         trn_node_data.dataset_label_to_node_label.keys()))
@@ -71,47 +84,49 @@ def train_one_node(
                 session=session,
                 save_path=save_path,
                 model=model,
+                batch_size=batch_size,
+                wait_best_error_time=wait_best_error_time,
                 trn_node_data=trn_node_data,
                 vld_features=vld_features,
                 vld_labels=remapped_vld_labels,
-                get_winner=get_winner,
-                unite_start=args.unite_start,
-                unite_timeout=args.unite_timeout,
-                part_split_threshold=args.part_split_threshold,
-                batch_size=args.batch_size,
-                wait_best_error_time=args.wait_best_error_time)
+                get_winner=unite_parameters.get_winner,
+                unite_start=unite_parameters.unite_start,
+                unite_timeout=unite_parameters.unite_timeout,
+                part_split_threshold=unite_parameters.part_split_threshold,
+            )
 
             trn_outputs = session.run(model.predicted_y, {model.x: trn_node_data.features})
-            trn_output_winners = get_winner(trn_outputs)
+            trn_output_winners = unite_parameters.get_winner(trn_outputs)
             vld_outputs = session.run(model.predicted_y, {model.x: vld_features})
-            vld_output_winners = get_winner(vld_outputs)
+            vld_output_winners = unite_parameters.get_winner(vld_outputs)
             session.close()
 
-    if args.retrain_num_units is not None:
-        print("\nRetraining node with {} hidden units\n".format(args.retrain_num_units))
+    if retrain_num_units is not None:
+        print("\nRetraining node with {} hidden units\n".format(retrain_num_units))
         with tf.Graph().as_default():
-            retrain_model = model_builder(trn_node_data.num_labels, num_units = args.retrain_num_units)
+            retrain_model = model_builder(trn_node_data.num_labels, num_units=retrain_num_units)
             with tf.Session() as session:
                 session.run(tf.global_variables_initializer())
 
                 info = train_one_node_impl(
                     session=session,
                     save_path=save_path,
+                    batch_size=batch_size,
                     model=retrain_model,
+                    wait_best_error_time=wait_best_error_time,
                     trn_node_data=trn_node_data,
                     vld_features=vld_features,
                     vld_labels=remapped_vld_labels,
-                    get_winner=get_winner,
+                    get_winner=unite_parameters.get_winner,
                     unite_start=sys.maxint,
                     unite_timeout=sys.maxint,
                     part_split_threshold=1.0,
-                    batch_size=args.batch_size,
-                    wait_best_error_time=args.wait_best_error_time)
+                )
 
                 trn_outputs = session.run(retrain_model.predicted_y, {retrain_model.x: trn_node_data.features})
-                trn_output_winners = get_winner(trn_outputs)
+                trn_output_winners = unite_parameters.get_winner(trn_outputs)
                 vld_outputs = session.run(retrain_model.predicted_y, {retrain_model.x: vld_features})
-                vld_output_winners = get_winner(vld_outputs)
+                vld_output_winners = unite_parameters.get_winner(vld_outputs)
                 session.close()
 
     print("Final mapping:")
@@ -144,32 +159,34 @@ def train_one_node(
 
             new_vld_features = vld_features[samples_to_keep]
             new_vld_labels = vld_labels[samples_to_keep]
+
             train_one_node(
-                recursive,
-                model_builder,
-                new_node_data,
-                new_vld_features,
-                new_vld_labels,
-                new_node_pathes[output_idx],
-                get_winner,
-                args)
+                recursive=recursive,
+                model_builder=model_builder,
+                trn_node_data=new_node_data,
+                vld_features=new_vld_features,
+                vld_labels=new_vld_labels,
+                save_path=new_node_pathes[output_idx],
+                batch_size=batch_size,
+                wait_best_error_time=wait_best_error_time,
+                retrain_num_units=retrain_num_units,
+                unite_parameters=unite_parameters,
+            )
 
 
-def train_tree(args, recursive):
-    trn_features, trn_labels = read_data(args.train_data)
-    vld_features, vld_labels = read_data(args.validation_data)
-
-    def model_builder(num_labels, num_units=args.num_hidden_neurons):
-        model = NeuralNetworkWithOneHiddenLayer(
-            trn_features.shape[1],
-            num_units,
-            num_labels,
-            optimizer=tf.train.MomentumOptimizer(
-                args.learning_rate,
-                args.momentum,
-                use_nesterov=False),
-            cost_builder=cross_entropy_builder)
-        return model
+def train_tree(
+        recursive,
+        train_data,
+        validation_data,
+        save_path,
+        batch_size,
+        model_builder,
+        wait_best_error_time,
+        retrain_num_units,
+        unite_parameters,
+):
+    trn_features, trn_labels = train_data
+    vld_features, vld_labels = validation_data
 
     dataset_label_to_num_samples = {}
     for label_idx in xrange(get_num_labels(trn_labels)):
@@ -181,11 +198,14 @@ def train_tree(args, recursive):
         dataset_label_to_num_samples)
 
     train_one_node(
-        recursive,
-        model_builder,
-        trn_node_data,
-        vld_features,
-        vld_labels,
-        args.save_to_directory,
-        max_greater_than_threshold(args.unite_threshold),
-        args)
+        recursive=recursive,
+        model_builder=model_builder,
+        trn_node_data=trn_node_data,
+        vld_features=vld_features,
+        vld_labels=vld_labels,
+        save_path=save_path,
+        batch_size=batch_size,
+        wait_best_error_time=wait_best_error_time,
+        retrain_num_units=retrain_num_units,
+        unite_parameters=unite_parameters
+    )
