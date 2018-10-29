@@ -42,7 +42,7 @@ def remap_labels(labels, mapping=None):
 
 
 def as_int_keys(ddict):
-    return {int(k): v for k, v in ddict.iteritems()}
+    return {int(k): v for k, v in ddict.items()}
 
 
 def _filter_features_and_labels_by_keys(features, labels, good_labels):

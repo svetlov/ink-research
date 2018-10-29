@@ -6,8 +6,6 @@ import sys
 import os
 
 from copy import deepcopy
-# from itertools import izip
-# from itertools import izip
 
 import matplotlib
 matplotlib.use('Agg')
@@ -242,6 +240,6 @@ def train_one_node_impl(
     return {
         "best_epoch": best_epoch,
         "accuracy": best_accuracy,
-        "dataset_label_to_node_label": trn_node_data.dataset_label_to_node_label,
-        "node_label_to_active_output_neurons": best_node_label_to_active_outputs
+        "dataset_label_to_node_label": {str(k): v for k, v in trn_node_data.dataset_label_to_node_label.items()},
+        "node_label_to_active_output_neurons": {str(k): v for k, v in best_node_label_to_active_outputs.items()}
     }

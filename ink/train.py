@@ -134,7 +134,7 @@ def train_one_node(
         print("\t{} -> {}".format(label, ",".join(map(str, sorted(active_outputs)))))
 
     new_nodes = split_node_data(trn_node_data)
-    new_node_pathes = {output_idx: (save_path + str(output_idx) + "/") for output_idx in new_nodes.keys()}
+    new_node_pathes = {str(output_idx): (save_path + str(output_idx) + "/") for output_idx in new_nodes.keys()}
     info["output_neuron_to_model_path"] = new_node_pathes
     info["recursive"] = recursive
     json.dump(
@@ -166,7 +166,7 @@ def train_one_node(
                 trn_node_data=new_node_data,
                 vld_features=new_vld_features,
                 vld_labels=new_vld_labels,
-                save_path=new_node_pathes[output_idx],
+                save_path=new_node_pathes[str(output_idx)],
                 batch_size=batch_size,
                 wait_best_error_time=wait_best_error_time,
                 retrain_num_units=retrain_num_units,
