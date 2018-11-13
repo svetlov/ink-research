@@ -76,6 +76,11 @@ def parse_args():
         type=int,
         default=None,
         help='number of units used to retrain node')
+    train.add_argument(
+        "--loss-function",
+        choices=['mse', 'crossentropy'],
+        default='crossentropy',
+        help='Loss function to train')
 
     predict = subparsers.add_parser('predict')
     predict.add_argument("--load-from-directory", type=get_model_directory, required=True)
@@ -101,6 +106,11 @@ def main():
         vld_features, vld_labels = read_data(args.validation_data)
 
         def model_builder(num_labels, num_units=args.num_hidden_neurons):
+            cost_builder = {
+                'mse': mse_builder,
+                'crossentropy': cross_entropy_builder
+            }[args.loss_function]
+
             model = NeuralNetworkWithOneHiddenLayer(
                 trn_features.shape[1],
                 num_units,
@@ -109,7 +119,7 @@ def main():
                     args.learning_rate,
                     args.momentum,
                     use_nesterov=False),
-                cost_builder=cross_entropy_builder)
+                cost_builder=cost_builder)
             return model
 
         unite_parameters = UniteParameters(

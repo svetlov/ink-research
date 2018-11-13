@@ -15,6 +15,10 @@ def cross_entropy_builder(predicted_y, expected_y):
     )
 
 
+def mse_builder(predicted_y, expected_y):
+    return tf.losses.mean_squared_error(labels=expected_y, predictions=predicted_y)
+
+
 class NeuralNetworkWithOneHiddenLayer(object):
     def __init__(self, num_features, num_hidden, num_labels, optimizer, cost_builder):
         self.num_features = num_features
@@ -32,14 +36,17 @@ class NeuralNetworkWithOneHiddenLayer(object):
             self._b_1 = tf.Variable(tf.truncated_normal([self.num_hidden]), name='b')
 
             self.h1 = tf.nn.relu(tf.matmul(self.x, self._W_1) + self._b_1)
-            # self.h1 = tf.nn.sigmoid(tf.matmul(self.x, self._W_1) + self._b_1)
 
         with tf.name_scope('output'):
             self._W_2 = tf.Variable(tf.truncated_normal([self.num_hidden, num_labels]), name='W')
             self._b_2 = tf.Variable(tf.truncated_normal([num_labels]), name='b')
 
-            self.predicted_y = tf.nn.softmax(tf.matmul(self.h1, self._W_2) + self._b_2, name="y")
-            predicted_label = tf.argmax(self.predicted_y, 1, name='predicted_label')
+            self.h2 = tf.matmul(self.h1, self._W_2) + self._b_2
+            if cost_builder is cross_entropy_builder:
+                self.predicted_y = tf.nn.softmax(self.h2, name='y')
+            else:
+                self.predicted_y = tf.identity(self.h2, name='y')
+            predicted_label = tf.argmax(self.predicted_y, axis=1, name='predicted_label')
 
         self.cost = cost_builder(self.predicted_y, self.expected_y)
         self.gvs = self.optimizer.compute_gradients(self.cost)
