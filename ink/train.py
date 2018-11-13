@@ -93,6 +93,7 @@ def train_one_node(
                 unite_start=unite_parameters.unite_start,
                 unite_timeout=unite_parameters.unite_timeout,
                 part_split_threshold=unite_parameters.part_split_threshold,
+                name='main',
             )
 
             trn_outputs = session.run(model.predicted_y, {model.x: trn_node_data.features})
@@ -121,6 +122,7 @@ def train_one_node(
                     unite_start=sys.maxsize,
                     unite_timeout=sys.maxsize,
                     part_split_threshold=1.0,
+                    name='retrain',
                 )
 
                 trn_outputs = session.run(retrain_model.predicted_y, {retrain_model.x: trn_node_data.features})

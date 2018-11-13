@@ -12,8 +12,11 @@ matplotlib.use('Agg')
 
 import numpy as np
 import tensorflow as tf
+
 import matplotlib.pyplot as plt
 from matplotlib import cm
+import seaborn
+import imageio
 
 from .data import random_batches_data_provider
 from .util import (
@@ -142,7 +145,7 @@ def create_predictor(session, predict_op, features_op, get_winner):
     return predictor
 
 
-def visualize(predictor, X, y, title, path):
+def visualize(predictor, X, y, title, path=None):
     assert X.shape[1] == 2
     x0_min, x0_max = X[:, 0].min() - 1, X[:, 0].max() + 1
     x1_min, x1_max = X[:, 1].min() - 1, X[:, 1].max() + 1
@@ -158,22 +161,31 @@ def visualize(predictor, X, y, title, path):
     axarr.contourf(x0_grid, x1_grid, predicted, alpha=0.2, cmap=cm.tab20)
     axarr.scatter(X[:, 0], X[:, 1], c=y, s=10, edgecolor=None)
     axarr.set_title(title)
-    f.savefig(os.path.join(path, "{}.png".format(title)), dpi=300)
+    if path is None:
+        f.canvas.draw()
+        image = np.frombuffer(f.canvas.tostring_rgb(), dtype='uint8')
+        image  = image.reshape(f.canvas.get_width_height()[::-1] + (3,))
+    else:
+        f.savefig(os.path.join(path, "{}.png".format(title)), dpi=300)
+        image = None
+    plt.close()
+    return image
 
 
 def train_one_node_impl(
-    session,
-    save_path,
-    model,
-    trn_node_data,
-    vld_features,
-    vld_labels,
-    get_winner,
-    unite_start=0,
-    unite_timeout=1,
-    part_split_threshold=0.2,
-    batch_size=1,
-    wait_best_error_time=50
+        session,
+        save_path,
+        model,
+        trn_node_data,
+        vld_features,
+        vld_labels,
+        get_winner,
+        unite_start=0,
+        unite_timeout=1,
+        part_split_threshold=0.2,
+        batch_size=1,
+        wait_best_error_time=50,
+        name='',
 ):
     assert len(vld_features.shape) == 2
     assert len(vld_labels.shape) == 1
@@ -187,6 +199,8 @@ def train_one_node_impl(
     best_epoch = -1
     best_accuracy = sys.float_info.min
     best_node_label_to_active_outputs = deepcopy(trn_node_data.node_label_to_active_outputs)
+
+    mapped_images, original_images = [], []
 
     since_last_unite = 0
     while num_epochs - best_epoch < wait_best_error_time:
@@ -204,6 +218,16 @@ def train_one_node_impl(
                 print("New mapping:")
                 for label, active_outputs in trn_node_data.node_label_to_active_outputs.items():
                     print("\t{} -> {}".format(label, ",".join(map(str, sorted(active_outputs)))))
+
+        if trn_node_data.features.shape[1] == 2:
+            os.makedirs(save_path, exist_ok=True)
+            predictor = create_predictor(session, model.predicted_y, model.x, get_winner)
+            title = 'mapped_{}_{}'.format(name, str(num_epochs).zfill(3))
+            mapped = visualize(predictor, trn_node_data.features, trn_node_data.mapped_node_labels, title=title)
+            mapped_images.append(mapped)
+            title = 'original_{}_{}'.format(name, str(num_epochs).zfill(3))
+            original = visualize(predictor, trn_node_data.features, trn_node_data._node_labels, title=title)
+            original_images.append(original)
 
         h1, trn_outputs = session.run([model.h1, model.predicted_y], {model.x: trn_node_data.features})
         trn_accuracy = calculate_accuracy(
@@ -233,6 +257,8 @@ def train_one_node_impl(
     trn_node_data.node_label_to_active_outputs = best_node_label_to_active_outputs
 
     if trn_node_data.features.shape[1] == 2:
+        imageio.mimsave(os.path.join(save_path, 'mapped_{}.gif'.format(name)), mapped_images, fps=1)
+        imageio.mimsave(os.path.join(save_path, 'original_{}.gif'.format(name)), original_images, fps=1)
         predictor = create_predictor(session, model.predicted_y, model.x, get_winner)
         visualize(predictor, trn_node_data.features, trn_node_data.mapped_node_labels, title='mapped', path=save_path)
         visualize(predictor, trn_node_data.features, trn_node_data._node_labels, title='original', path=save_path)

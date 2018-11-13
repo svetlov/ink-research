@@ -32,6 +32,7 @@ class NeuralNetworkWithOneHiddenLayer(object):
             self._b_1 = tf.Variable(tf.truncated_normal([self.num_hidden]), name='b')
 
             self.h1 = tf.nn.relu(tf.matmul(self.x, self._W_1) + self._b_1)
+            # self.h1 = tf.nn.sigmoid(tf.matmul(self.x, self._W_1) + self._b_1)
 
         with tf.name_scope('output'):
             self._W_2 = tf.Variable(tf.truncated_normal([self.num_hidden, num_labels]), name='W')
