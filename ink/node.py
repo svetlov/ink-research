@@ -215,6 +215,7 @@ def train_one_node_impl(
         if num_epochs > unite_start and since_last_unite > unite_timeout:
             outputs = session.run(model.predicted_y, feed_dict={model.x: trn_node_data.features})
             if trn_node_data.try_unite_outputs(outputs, get_winner(outputs), part_split_threshold):
+                since_last_unite = 0
                 print("New mapping:")
                 for label, active_outputs in trn_node_data.node_label_to_active_outputs.items():
                     print("\t{} -> {}".format(label, ",".join(map(str, sorted(active_outputs)))))
